@@ -1,0 +1,12 @@
+{
+    "name": "praetorius/fluid-rector",
+    "require-dev": {
+        "rector/rector": "^1.2",
+        "symplify/rule-doc-generator": "^12.2"
+    },
+    "autoload": {
+        "psr-4": {
+            "Praetorius\\FluidRector\\": "src/"
+        }
+    }
+}
