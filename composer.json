@@ -9,5 +9,8 @@
         "rector/rector": "^1.2",
         "nikic/php-parser": "^4",
         "symplify/rule-doc-generator-contracts": "^11.2"
+    },
+    "require-dev": {
+        "typo3fluid/fluid": "dev-main"
     }
 }

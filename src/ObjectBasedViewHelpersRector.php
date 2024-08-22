@@ -4,23 +4,43 @@ declare(strict_types=1);
 
 namespace Praetorius\FluidRector;
 
-use PhpParser\Modifiers;
 use PhpParser\Node;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\PropertyFetch;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Property;
+use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\TraitUse;
 use Rector\Rector\AbstractRector;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\CodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithContentArgumentAndRenderStatic;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
-use TYPO3Fluid\Fluid\Tests\Functional\Fixtures\ViewHelpers\CompileWithContentArgumentAndRenderStaticExplicitSetArgumentNameForContentOverriddenResolveContentArgumentNameMethodViewHelper;
-use TYPO3Fluid\Fluid\Tests\Functional\ViewHelpers\StaticCacheable\Fixtures\ViewHelpers\CompilableViewHelper;
 
-class ObjectBasedViewHelpersRector extends AbstractRector
+final class ObjectBasedViewHelpersRector extends AbstractRector
 {
+    /**
+     * This method helps other to understand the rule
+     * and to generate documentation.
+     */
+    public function getRuleDefinition(): RuleDefinition
+    {
+        return new RuleDefinition(
+            'Migrate static ViewHelpers to object-based ViewHelpers', [
+                new CodeSample(
+                    // code before
+                    'OLD',
+                    // code after
+                    'NEW'
+                ),
+            ]
+        );
+    }
+
     /**
      * @return array<class-string<Node>>
      */
@@ -37,41 +57,9 @@ class ObjectBasedViewHelpersRector extends AbstractRector
      */
     public function refactor(Node $classNode): ?Node
     {
-        // Ignore ViewHelpers that test trait functionality
-        if ($this->isNames($classNode, [
-            CompileWithContentArgumentAndRenderStaticExplicitSetArgumentNameForContentOverriddenResolveContentArgumentNameMethodViewHelper::class,
-            CompilableViewHelper::class,
-        ])) {
-            return null;
-        }
-
-        // Only refactor ViewHelper classes that implement RenderStatic traits
-        $usesTrait = false;
-        foreach ($classNode->getTraitUses() as $traitUse) {
-            foreach ($traitUse->traits as $trait) {
-                // Skip ViewHelpers where content argument is determined automatically
-                if ($this->isName($trait, CompileWithContentArgumentAndRenderStatic::class)) {
-                    // $contentArgumentNameProperty = $classNode->getProperty('contentArgumentName');
-                    // if ($contentArgumentNameProperty && $contentArgumentNameProperty->props !== []) {
-                    //     $usesTrait = true;
-                    //     break;
-                    // }
-
-                    $resolveContentArgumentNameMethod = $classNode->getMethod('resolveContentArgumentName');
-                    if ($resolveContentArgumentNameMethod) {
-                        $usesTrait = true;
-                        break;
-                    }
-                }
-
-                if ($this->isName($trait, CompileWithRenderStatic::class)) {
-                    $usesTrait = true;
-                    break;
-                }
-            }
-        }
-
-        if (!$usesTrait) {
+        // Only refactor ViewHelper classes that implement RenderStatic traits with
+        // explicit definition of the contentArgumentName
+        if (!$this->classCanBeMigrated($classNode)) {
             return null;
         }
 
@@ -82,39 +70,81 @@ class ObjectBasedViewHelpersRector extends AbstractRector
         }
 
         // Replacements for renderStatic() method arguments
-        $replacementParams = [
-            'this->arguments',
-            'this->renderChildren',
-            'this->renderingContext',
-        ];
+        $argumentsParamName = (string)$staticMethodNode->params[0]->var->name;
+        $argumentsReplacement = new PropertyFetch(new Variable('this'), new Identifier('arguments'));
+
+        $renderClosureParamName = (string)$staticMethodNode->params[1]->var->name;
+        $childrenClosureReplacement = new PropertyFetch(new Variable('this'), new Identifier('renderChildren'));
+        $childrenClosureCallReplacement = new MethodCall(new Variable('this'), new Identifier('renderChildren'));
+
+        $renderingContextParamName = (string)$staticMethodNode->params[2]->var->name;
+        $renderingContextReplacement = new PropertyFetch(new Variable('this'), new Identifier('renderingContext'));
 
         // Replace local variables in render function with object properties
         $this->traverseNodesWithCallable(
             $staticMethodNode->stmts,
-            function (Node $variableNode) use ($staticMethodNode, $replacementParams): ?Node {
-                if (!$variableNode instanceof Variable) {
-                    return null;
+            function (Node $node) use (
+                $argumentsParamName,
+                $argumentsReplacement,
+                $renderClosureParamName,
+                $childrenClosureReplacement,
+                $childrenClosureCallReplacement,
+                $renderingContextParamName,
+                $renderingContextReplacement,
+            ): ?Node {
+                // If the renderChildren closure is called directly, the whole function call needs to be replaced
+                if (
+                    $node instanceof FuncCall &&
+                    $node->name instanceof Variable &&
+                    (string)$node->name->name === $renderClosureParamName
+                ) {
+                    return $childrenClosureCallReplacement;
                 }
-
-                foreach ($staticMethodNode->params as $i => $param) {
-                    if ((string)$param->var->name == (string)$variableNode->name) {
-                        $variableNode->name = new Identifier($replacementParams[$i]);
-                    }
+                // Replace usages of variables
+                if ($node instanceof Variable) {
+                    return match ((string)$node->name) {
+                        $argumentsParamName => $argumentsReplacement,
+                        $renderingContextParamName => $renderingContextReplacement,
+                        $renderClosureParamName => $childrenClosureReplacement,
+                        default => null
+                    };
                 }
-
-                return $variableNode;
+                return null;
             }
         );
 
         // Rename method and make it non-static
         $staticMethodNode->params = [];
         $staticMethodNode->name = new Identifier('render');
-        $staticMethodNode->flags = $staticMethodNode->flags ^ Modifiers::STATIC;
+        $staticMethodNode->flags = $staticMethodNode->flags ^ Class_::MODIFIER_STATIC;
 
-        // Rename content argument method
+        // Use new API to set content argument
         $resolveContentArgumentNameMethod = $classNode->getMethod('resolveContentArgumentName');
+        $contentArgumentNameProperty = $classNode->getProperty('contentArgumentName');
         if ($resolveContentArgumentNameMethod instanceof ClassMethod) {
+            // Rename content argument method
             $resolveContentArgumentNameMethod->name = new Identifier('getContentArgumentName');
+        } elseif ($contentArgumentNameProperty instanceof Property) {
+            // Remove property and extract its default value
+            $defaultValueExpression = null;
+            foreach ($classNode->stmts as $stmtKey => $stmt) {
+                if (!$stmt instanceof Property) {
+                    continue;
+                }
+                foreach ($stmt->props as $propKey => $prop) {
+                    if ($prop instanceof PropertyProperty && $prop->name->toString() === 'contentArgumentName') {
+                        $defaultValueExpression = $prop->default;
+                        unset($stmt->props[$propKey]);
+                    }
+                }
+            }
+
+            $getContentArgumentNameMethod = new ClassMethod('getContentArgumentName');
+            $getContentArgumentNameMethod->flags = Class_::MODIFIER_PUBLIC;
+            $getContentArgumentNameMethod->stmts[] = new Return_($defaultValueExpression);
+            $getContentArgumentNameMethod->returnType = new Identifier('string');
+
+            $classNode->stmts[] = $getContentArgumentNameMethod;
         }
 
         // Remove traits
@@ -135,21 +165,28 @@ class ObjectBasedViewHelpersRector extends AbstractRector
         return $classNode;
     }
 
-    /**
-     * This method helps other to understand the rule
-     * and to generate documentation.
-     */
-    public function getRuleDefinition(): RuleDefinition
+    private function classCanBeMigrated(Class_ $classNode): bool
     {
-        return new RuleDefinition(
-            'Migrate static ViewHelpers to object-based ViewHelpers', [
-                new CodeSample(
-                    // code before
-                    'OLD',
-                    // code after
-                    'NEW'
-                ),
-            ]
-        );
+        foreach ($classNode->getTraitUses() as $traitUse) {
+            foreach ($traitUse->traits as $trait) {
+                // Skip ViewHelpers where content argument is determined automatically
+                if ($this->isName($trait, CompileWithContentArgumentAndRenderStatic::class)) {
+                    $contentArgumentNameProperty = $classNode->getProperty('contentArgumentName');
+                    if ($contentArgumentNameProperty && $contentArgumentNameProperty->props !== []) {
+                        return true;
+                    }
+
+                    $resolveContentArgumentNameMethod = $classNode->getMethod('resolveContentArgumentName');
+                    if ($resolveContentArgumentNameMethod) {
+                        return true;
+                    }
+                }
+
+                if ($this->isName($trait, CompileWithRenderStatic::class)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 }
