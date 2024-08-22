@@ -1,13 +1,13 @@
 {
     "name": "praetorius/fluid-rector",
-    "require-dev": {
-        "rector/rector": "^1.2",
-        "symplify/rule-doc-generator": "^12.2",
-        "nikic/php-parser": "^5.1"
-    },
     "autoload": {
         "psr-4": {
             "Praetorius\\FluidRector\\": "src/"
         }
+    },
+    "require": {
+        "rector/rector": "^1.2",
+        "nikic/php-parser": "^4",
+        "symplify/rule-doc-generator-contracts": "^11.2"
     }
 }
