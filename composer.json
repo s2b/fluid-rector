@@ -11,6 +11,7 @@
         "symplify/rule-doc-generator-contracts": "^11.2"
     },
     "require-dev": {
-        "typo3fluid/fluid": "dev-main"
+        "typo3fluid/fluid": "dev-main",
+        "phpunit/phpunit": "^10.5"
     }
 }

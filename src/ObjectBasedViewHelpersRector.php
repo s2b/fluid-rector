@@ -15,6 +15,7 @@ use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Property;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\TraitUse;
+use PhpParser\Node\VariadicPlaceholder;
 use Rector\Rector\AbstractRector;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\CodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
@@ -63,18 +64,14 @@ final class ObjectBasedViewHelpersRector extends AbstractRector
             return null;
         }
 
-        // Skip ViewHelpers without renderStatic() method
         $staticMethodNode = $classNode->getMethod('renderStatic');
-        if (!$staticMethodNode instanceof ClassMethod || !$staticMethodNode->isStatic()) {
-            return null;
-        }
 
         // Replacements for renderStatic() method arguments
         $argumentsParamName = (string)$staticMethodNode->params[0]->var->name;
         $argumentsReplacement = new PropertyFetch(new Variable('this'), new Identifier('arguments'));
 
         $renderClosureParamName = (string)$staticMethodNode->params[1]->var->name;
-        $childrenClosureReplacement = new PropertyFetch(new Variable('this'), new Identifier('renderChildren'));
+        $childrenClosureReplacement = new MethodCall(new Variable('this'), new Identifier('renderChildren'), [new VariadicPlaceholder()]);
         $childrenClosureCallReplacement = new MethodCall(new Variable('this'), new Identifier('renderChildren'));
 
         $renderingContextParamName = (string)$staticMethodNode->params[2]->var->name;
@@ -167,6 +164,12 @@ final class ObjectBasedViewHelpersRector extends AbstractRector
 
     private function classCanBeMigrated(Class_ $classNode): bool
     {
+        // Skip ViewHelpers without renderStatic() method (this shouldn't happen)
+        $staticMethodNode = $classNode->getMethod('renderStatic');
+        if (!$staticMethodNode instanceof ClassMethod || !$staticMethodNode->isStatic()) {
+            return false;
+        }
+
         foreach ($classNode->getTraitUses() as $traitUse) {
             foreach ($traitUse->traits as $trait) {
                 // Skip ViewHelpers where content argument is determined automatically
