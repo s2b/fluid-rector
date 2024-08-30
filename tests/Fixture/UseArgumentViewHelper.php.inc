@@ -6,13 +6,18 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
-class CallRenderChildrenStaticViewHelper extends AbstractViewHelper
+class UseArgumentViewHelper extends AbstractViewHelper
 {
     use CompileWithRenderStatic;
 
+    public function initializeArguments(): void
+    {
+        $this->registerArgument('test', 'string', '');
+    }
+
     public static function renderStatic(array $arguments, \Closure $renderChildrenClosure, RenderingContextInterface $renderingContext): string
     {
-        return $renderChildrenClosure();
+        return $arguments['test'];
     }
 }
 
@@ -26,11 +31,16 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
-class CallRenderChildrenStaticViewHelper extends AbstractViewHelper
+class UseArgumentViewHelper extends AbstractViewHelper
 {
+    public function initializeArguments(): void
+    {
+        $this->registerArgument('test', 'string', '');
+    }
+
     public function render(): string
     {
-        return $this->renderChildren();
+        return $this->arguments['test'];
     }
 }
 

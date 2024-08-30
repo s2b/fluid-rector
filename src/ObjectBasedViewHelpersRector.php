@@ -13,6 +13,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Property;
+use PhpParser\Node\Stmt\PropertyProperty;
 use PhpParser\Node\Stmt\Return_;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\VariadicPlaceholder;
@@ -32,11 +33,27 @@ final class ObjectBasedViewHelpersRector extends AbstractRector
     {
         return new RuleDefinition(
             'Migrate static ViewHelpers to object-based ViewHelpers', [
-                new CodeSample(
-                    // code before
-                    'OLD',
-                    // code after
-                    'NEW'
+                new CodeSample(<<<'CODE_SAMPLE'
+class MyViewHelper extends AbstractViewHelper
+{
+    use CompileWithRenderStatic;
+
+    public static function renderStatic(array $arguments, \Closure $renderChildrenClosure, RenderingContextInterface $renderingContext): string
+    {
+        return $renderChildrenClosure();
+    }
+}
+CODE_SAMPLE
+            ,
+            <<<'CODE_SAMPLE'
+class MyViewHelper extends AbstractViewHelper
+{
+    public function render(): string
+    {
+        return $this->renderChildren();
+    }
+}
+CODE_SAMPLE
                 ),
             ]
         );
@@ -133,6 +150,9 @@ final class ObjectBasedViewHelpersRector extends AbstractRector
                         $defaultValueExpression = $prop->default;
                         unset($stmt->props[$propKey]);
                     }
+                }
+                if ($stmt->props === []) {
+                    unset($classNode->stmts[$stmtKey]);
                 }
             }
 

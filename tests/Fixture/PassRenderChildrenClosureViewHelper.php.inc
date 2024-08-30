@@ -6,13 +6,18 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
-class CallRenderChildrenStaticViewHelper extends AbstractViewHelper
+class PassRenderChildrenClosureViewHelper extends AbstractViewHelper
 {
     use CompileWithRenderStatic;
 
     public static function renderStatic(array $arguments, \Closure $renderChildrenClosure, RenderingContextInterface $renderingContext): string
     {
-        return $renderingContext->getVariableProvider()->get('test');
+        return self::doSomething($renderChildrenClosure);
+    }
+
+    private static function doSomething(\Closure $closure): string
+    {
+        return $closure();
     }
 }
 
@@ -26,11 +31,16 @@ use TYPO3Fluid\Fluid\Core\Rendering\RenderingContextInterface;
 use TYPO3Fluid\Fluid\Core\ViewHelper\AbstractViewHelper;
 use TYPO3Fluid\Fluid\Core\ViewHelper\Traits\CompileWithRenderStatic;
 
-class CallRenderChildrenStaticViewHelper extends AbstractViewHelper
+class PassRenderChildrenClosureViewHelper extends AbstractViewHelper
 {
     public function render(): string
     {
-        return $this->renderingContext->getVariableProvider()->get('test');
+        return self::doSomething($this->renderChildren(...));
+    }
+
+    private static function doSomething(\Closure $closure): string
+    {
+        return $closure();
     }
 }
 
